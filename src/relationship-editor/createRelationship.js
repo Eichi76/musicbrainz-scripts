@@ -64,7 +64,7 @@ export function createAttributeTree(...attributes) {
 			return {
 				...attribute,
 				type: attributeType,
-				typeID: attributeType.id,
+				typeID: attributeType?.id ?? '',
 			};
 		})
 	);

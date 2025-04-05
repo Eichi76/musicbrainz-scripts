@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name          MusicBrainz: Voice actor credits
-// @version       2025.2.7
-// @namespace     https://github.com/kellnerd/musicbrainz-scripts
+// @version       2025.4.5
+// @namespace     https://github.com/Eichi76/musicbrainz-scripts
 // @author        kellnerd
 // @description   Parses voice actor credits from text and automates the process of creating release or recording relationships for these. Also imports credits from Discogs.
-// @homepageURL   https://github.com/kellnerd/musicbrainz-scripts#voice-actor-credits
-// @downloadURL   https://raw.github.com/kellnerd/musicbrainz-scripts/main/dist/voiceActorCredits.user.js
-// @updateURL     https://raw.github.com/kellnerd/musicbrainz-scripts/main/dist/voiceActorCredits.user.js
-// @supportURL    https://github.com/kellnerd/musicbrainz-scripts/issues
+// @homepageURL   https://github.com/Eichi76/musicbrainz-scripts#voice-actor-credits
+// @downloadURL   https://raw.github.com/Eichi76/musicbrainz-scripts/voiceActor-JSONImport/dist/voiceActorCredits.user.js
+// @updateURL     https://raw.github.com/Eichi76/musicbrainz-scripts/voiceActor-JSONImport/dist/voiceActorCredits.user.js
+// @supportURL    https://github.com/Eichi76/musicbrainz-scripts/issues
 // @grant         GM.getValue
 // @grant         GM.setValue
 // @run-at        document-idle
@@ -409,8 +409,8 @@ textarea#credit-input {
 			// hidden pattern inputs have a zero width, so they have to be resized if the config has not been open initially
 			if (!config.open) {
 				config.addEventListener('toggle', () => {
-					qsa('input.pattern', config).forEach((input) => automaticWidth.call(input));
-				}, { once: true });
+						qsa('input.pattern', config).forEach((input) => automaticWidth.call(input));
+					}, { once: true });
 			}
 		});
 
@@ -467,8 +467,8 @@ textarea#credit-input {
 
 	/**
 	 * Adds a new button with the given label and click handler to the credit parser UI.
-	 * @param {string} label 
-	 * @param {(creditInput: HTMLTextAreaElement, event: MouseEvent) => any} clickHandler 
+	 * @param {string} label
+	 * @param {(creditInput: HTMLTextAreaElement, event: MouseEvent) => any} clickHandler
 	 * @param {string} [description] Description of the button, shown as tooltip.
 	 */
 	function addButton(label, clickHandler, description) {
@@ -488,7 +488,7 @@ textarea#credit-input {
 
 	/**
 	 * Adds a new parser button with the given label and handler to the credit parser UI.
-	 * @param {string} label 
+	 * @param {string} label
 	 * @param {(creditLine: string, event: MouseEvent) => import('@kellnerd/es-utils').MaybePromise<CreditParserLineStatus>} parser
 	 * Handler which parses the given credit line and returns whether it was successful.
 	 * @param {string} [description] Description of the button, shown as tooltip.
@@ -497,35 +497,62 @@ textarea#credit-input {
 		/** @type {HTMLInputElement} */
 		const removeParsedLines = dom('remove-parsed-lines');
 
-		return addButton(label, async (creditInput, event) => {
-			const credits = creditInput.value.split('\n').map((line) => line.trim());
-			const parsedLines = [], skippedLines = [];
+		return addButton(label,	async (creditInput, event) => {
+			const parsedLines = [];
+				// Check ob CreditInput ein JSON String ist
+				if (checkJSON(creditInput.value)) {
+					// Wenn im CreditInput ein JSON string steht
+					// erzeuge daraus ein Object ...
+					const credits = JSON.parse(creditInput.value);
+					// durchlaufe alle Credit Objekte
+					for (const line of credits) {
+						// Übergebe das Credit Object
+						const parserStatus = await parser(line, event);
+						// Wenn Credit 'done' ist...
+						if (parserStatus !== 'skipped') {
+							// ...füge den Job + Künstler + Rollennamen als String ins Parsed Array
+							parsedLines.push(`${line.linktype}: ${line.name}${
+							line.attributesTypes[0]?.text ? ' - ' + line.attributesTypes[0].text : ''
+						}`);
+						}
+					}
+				} else {
+					// ...ansonsten führe Kellnerds Code aus
+					const credits = creditInput.value.split('\n').map((line) => line.trim());
+					const parsedLines = [], skippedLines = [];
 
-			for (const line of credits) {
-				// skip empty lines, but keep them for display of skipped lines
-				if (!line) {
-					skippedLines.push(line);
-					continue;
+					for (const line of credits) {
+						// skip empty lines, but keep them for display of skipped lines
+						if (!line) {
+							skippedLines.push(line);
+							continue;
+						}
+						// treat partially parsed lines as both skipped and parsed
+						const parserStatus = await parser(line, event);
+						if (parserStatus !== 'skipped') {
+							parsedLines.push(line);
+						}
+						if (parserStatus !== 'done') {
+							skippedLines.push(line);
+						}
+					}
+
+					if (parsedLines.length) {
+						addMessageToEditNote(parsedLines.join('\n'));
+					}
+
+					if (removeParsedLines.checked) {
+						// Wenn es Übersprungene Credozs als Objekte gibt
+						if (skippedLines.length && typeof skippedLines[0] === 'object') {
+							// ...setze diese Credits als JSON String in Textarea
+							setTextarea(creditInput, JSON.stringify(skippedLines));
+						} else {
+							// ...ansonsten trenne die Textzeile mit Umbruch
+							setTextarea(creditInput, skippedLines.join('\n'));
+						}
+					}
 				}
-
-				// treat partially parsed lines as both skipped and parsed
-				const parserStatus = await parser(line, event);
-				if (parserStatus !== 'skipped') {
-					parsedLines.push(line);
-				}
-				if (parserStatus !== 'done') {
-					skippedLines.push(line);
-				}
-			}
-
-			if (parsedLines.length) {
-				addMessageToEditNote(parsedLines.join('\n'));
-			}
-
-			if (removeParsedLines.checked) {
-				setTextarea(creditInput, skippedLines.join('\n'));
-			}
-		}, description);
+			}, description);
 	}
 
 	/**
@@ -583,8 +610,8 @@ textarea#credit-input {
 
 	/**
 	 * Sets the input to the given value (optional), resizes it and triggers persister and validation.
-	 * @param {HTMLInputElement} input 
-	 * @param {string} [value] 
+	 * @param {HTMLInputElement} input
+	 * @param {string} [value]
 	 */
 	function setInput(input, value) {
 		if (value) input.value = value;
@@ -594,12 +621,28 @@ textarea#credit-input {
 
 	/**
 	 * Sets the textarea to the given value and adjusts the height.
-	 * @param {HTMLTextAreaElement} textarea 
-	 * @param {string} value 
+	 * @param {HTMLTextAreaElement} textarea
+	 * @param {string} value
 	 */
 	function setTextarea(textarea, value) {
 		textarea.value = value;
 		automaticHeight.call(textarea);
+	}
+
+	/**
+	 * @description Check ob ein String ein JSON String ist
+	 * @author Eichi76
+	 * @date 2025-04-05
+	 * @param {string} str
+	 * @returns {boolean}
+	 */
+	function checkJSON(str) {
+		try {
+			JSON.parse(str);
+		} catch (e) {
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -773,6 +816,7 @@ textarea#credit-input {
 	}
 
 	// Adapted from https://thoughtspile.github.io/2018/07/07/rate-limit-promises/
+
 
 	function rateLimitedQueue(operation, interval) {
 		let queue = Promise.resolve(); // empty queue is ready
@@ -1185,7 +1229,7 @@ textarea#credit-input {
 				return {
 					...attribute,
 					type: attributeType,
-					typeID: attributeType.id,
+					typeID: attributeType?.id ?? '',
 				};
 			})
 		);
@@ -1390,6 +1434,101 @@ textarea#credit-input {
 	}
 
 	/**
+	 * MBS relationship link type IDs (incomplete).
+	 * @type {Record<CoreEntityTypeT, Record<CoreEntityTypeT, Record<string, number>>>}
+	 */
+	const LINK_TYPES = {
+		release: {
+			artist: {
+				'©': 709,
+				'℗': 710,
+				Mix: 26,
+				Editor: 38,
+				Producer: 30,
+				Writer: 54,
+				Vocal: 60,
+				Illustration: 927,
+				Audio_director: 1187,
+				Sound_effects: 1235,
+			},
+			label: {
+				'©': 708,
+				'℗': 711,
+				'licensed from': 712,
+				'licensed to': 833,
+				'distributed by': 361,
+				'manufactured by': 360,
+				'marketed by': 848,
+			},
+		},
+		recording: {
+			artist: {
+				'℗': 869,
+				Mix: 143,
+				Editor: 144,
+				Producer: 141,
+				Vocal: 149,
+				Illustration: 1244,
+				Audio_director: 1186,
+				Sound_effects: 1236,
+			},
+			label: {
+				'℗': 867,
+			},
+		},
+		work: {
+			artist: {
+				Writer: 167,
+			},
+		},
+	};
+
+	const RELATIONSHIP_ATTRIBUTES = {
+		additional: '0a5341f8-3b1d-4f99-a0c6-26b7f4e42c7f',
+		assistant: '8c4196b1-7053-4b16-921a-f22b2898ed44',
+		associate: '8d23d2dd-13df-43ea-85a0-d7eb38dc32ec',
+		co: 'ac6f6b4c-a4ec-4483-a04e-9f425a914573',
+		instrument: '0abd7f04-5e28-425b-956f-94789d9bcbe2',
+		vocal: 'd92884b7-ee0c-46d5-96f3-918196ba8c5b',
+		executive: 'e0039285-6667-4f94-80d6-aa6520c6d359',
+		task: '39867b3b-0f1e-40d5-b602-4f3936b7f486',
+		Spoken_vocals: 'd3a36e62-a7c4-4eb9-839f-adfebe87ac12',
+	};
+
+	/**
+	 * Returns the internal ID of the requested relationship link type.
+	 * @param {CoreEntityTypeT} sourceType Type of the source entity.
+	 * @param {CoreEntityTypeT} targetType Type of the target entity.
+	 * @param {string} relType
+	 */
+	function getLinkTypeId(sourceType, targetType, relType) {
+		const linkTypeId = LINK_TYPES[targetType]?.[sourceType]?.[relType];
+
+		if (linkTypeId) {
+			return linkTypeId;
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * @description Gibt die GID zum gegebenen Attribute zurück
+	 * @author Eichi76
+	 * @date 2025-04-05
+	 * @param {string} attributeName
+	 * @returns {string}
+	 */
+	function getAttributeGID(attributeName) {
+		const attributeGID = RELATIONSHIP_ATTRIBUTES[attributeName];
+
+		if (attributeGID) {
+			return attributeGID;
+		} else {
+			throw new Error(`Unsupported Attribute relationship type '${attributeName}'`);
+		}
+	}
+
+	/**
 	 * Adds a voice actor relationship for the given artist and their role.
 	 * Automatically maps artist names to MBIDs where possible, asks the user to match the remaining ones.
 	 * If recordings are selected, the voice actor relationships will be added to these, otherwise they target the release.
@@ -1398,7 +1537,7 @@ textarea#credit-input {
 	 * @param {boolean} [bypassCache] Bypass the name to MBID cache to overwrite wrong entries, disabled by default.
 	 * @returns {Promise<CreditParserLineStatus>}
 	 */
-	async function addVoiceActor(artistName, roleName, bypassCache = false) {
+	async function addVoiceActor(artistName, roleName, bypassCache = false, crewImport = {}) {
 		const artistMBID = !bypassCache && await nameToMBIDCache.get('artist', artistName);
 
 		/** @type {import('weight-balanced-tree').ImmutableTree<RecordingT> | null} */
@@ -1407,12 +1546,12 @@ textarea#credit-input {
 		if (artistMBID) {
 			// mapping already exists, automatically add the relationship
 			const artist = await entityCache.get(artistMBID);
-			createVoiceActorRelationship({ artist, roleName, artistCredit: artistName, recordings });
+			createVoiceActorRelationship({ artist, roleName, artistCredit: artistName, recordings, crewImport });
 
 			return 'done';
 		} else {
 			// pre-fill dialog and collect mappings for freshly matched artists
-			const artistMatch = await letUserSelectVoiceActor({ artistName, roleName, artistCredit: artistName, recordings });
+			const artistMatch = await letUserSelectVoiceActor({ artistName, roleName, artistCredit: artistName, recordings,	crewImport });
 
 			if (artistMatch?.gid) {
 				nameToMBIDCache.set(['artist', artistName], artistMatch.gid);
@@ -1484,8 +1623,8 @@ textarea#credit-input {
 		};
 	}
 
-	async function letUserSelectVoiceActor({ artistName, roleName, artistCredit, recordings }) {
-		await createVoiceActorDialog({ artist: artistName, roleName, artistCredit, recordings });
+	async function letUserSelectVoiceActor({ artistName, roleName, artistCredit, recordings, crewImport = {} }) {
+		await createVoiceActorDialog({ artist: artistName, roleName, artistCredit, recordings, crewImport });
 
 		// let the user select the matching entity
 		const finalState = await closingDialog();
@@ -1506,25 +1645,73 @@ textarea#credit-input {
 	 * @param {import('weight-balanced-tree').ImmutableTree<RecordingT>} [options.recordings]
 	 * Recordings to create the dialog for (fallback to release).
 	 */
-	async function createVoiceActorDialog({ artist, roleName, artistCredit, recordings } = {}) {
-		const vocalAttributes = [{
-			type: { gid: 'd3a36e62-a7c4-4eb9-839f-adfebe87ac12' }, // spoken vocals
-			credited_as: roleName,
-		}];
-
+	async function createVoiceActorDialog({ artist, roleName, artistCredit, recordings, crewImport } = {}) {
+		let attr_gid;
+		let attr_obj = {};
+		// Wenn ein Object besteht...
+		if (crewImport.name) {
+			// ... und es ein Attribute gibt...
+			if (crewImport.attributesTypes[0]?.type) {
+				// ...speichere die GID in einer Variabel
+				attr_gid = getAttributeGID(crewImport.attributesTypes[0].type);
+			}
+		} else {
+			// sollte kein Object bestehen ist die GID = Spoken Vocals
+			attr_gid = 'd3a36e62-a7c4-4eb9-839f-adfebe87ac12';
+		}
+		// Wenn es eine Attribute GID gibt setze diese in das Object für createAttributeTree
+		if (attr_gid) {
+			attr_obj['type'] = { gid: attr_gid };
+		}
+		// Wenn es einen Rollenname gibt setze die Eigenschaft in das Object für createAttributeTree
+		if (roleName != '') {
+			attr_obj['credited_as'] = roleName;
+		}
+		const vocalAttributes = attr_obj?.type ? [attr_obj] : undefined;
+		// Objet zum erstellen von Beziehung
+		let relship_obj = { target: artist, targetType: 'artist' };
+		// Webb es Attribute gibt
+		if (vocalAttributes) {
+			// ... füge diese dem Object für die Beziehungen hinzu
+			relship_obj['attributes'] = vocalAttributes;
+		}
 		if (recordings) {
+			// setze die Standard linktypID für Recoring -> Vocals
+			let linkTypeID = 149;
+			// Wenn es ein Crew Object gibt
+			if (crewImport.linktype) {
+				// ... und der Linkty bekannt ist...
+				if (getLinkTypeId(crewImport.targetType, 'recording', crewImport.linktype)) {
+					// ...speichere die ID in eine Variabel
+					linkTypeID = getLinkTypeId(crewImport.targetType, 'recording', crewImport.linktype);
+				} else {
+					console.log('Fehler', `Unsupported Recording relationship type '${crewImport.linktype}'`);
+					return 'skipped';
+				}
+			}
 			await createBatchDialog(recordings, {
-				target: artist,
-				targetType: 'artist',
-				linkTypeId: 149, // performance -> performer -> vocals
-				attributes: vocalAttributes,
+				linkTypeId: linkTypeID,
+				...relship_obj,
 			});
 		} else {
+			// Sollte die Beziehung nicht zu Recordings sein wird der Linktyp für Release benutzt
+			// setze die Standard linktypID für Release -> Vocals
+			let linkTypeID = 60;
+			// Wenn es ein Crew Object gibt
+			if (crewImport.linktype) {
+				// ... und der Linkty bekannt ist...
+				if (getLinkTypeId(crewImport.targetType, 'release', crewImport.linktype)) {
+					// ...speichere die ID in eine Variabel
+					linkTypeID = getLinkTypeId(crewImport.targetType, 'release', crewImport.linktype);
+				} else {
+					console.log('Fehler', `Unsupported Release relationship type '${crewImport.linktype}'`);
+					return 'skipped';
+				}
+			}
+			console.log('createDialog', { linkTypeId: linkTypeID, ...relship_obj });
 			await createDialog({
-				target: artist,
-				targetType: 'artist',
-				linkTypeId: 60, // performance -> performer -> vocals
-				attributes: vocalAttributes,
+				linkTypeId: linkTypeID,
+				...relship_obj,
 			});
 		}
 
@@ -1541,24 +1728,75 @@ textarea#credit-input {
 	 * @param {import('weight-balanced-tree').ImmutableTree<RecordingT>} [options.recordings]
 	 * Recordings to create the relationships for (fallback to release).
 	 */
-	function createVoiceActorRelationship({ artist, roleName, artistCredit, recordings }) {
-		const vocalAttributes = createAttributeTree({
-			type: { gid: 'd3a36e62-a7c4-4eb9-839f-adfebe87ac12' }, // spoken vocals
-			credited_as: roleName,
-		});
-
+	function createVoiceActorRelationship({ artist, roleName, artistCredit, recordings, crewImport = {} }) {
+		let attr_gid;
+		let attr_obj = {};
+		// Wenn eub Object besteht...
+		if (crewImport.name) {
+			// ... und es ein Attribute gibt...
+			if (crewImport.attributesTypes[0]?.type) {
+				// ...speichere die GID in einer Variabel
+				attr_gid = getAttributeGID(crewImport.attributesTypes[0].type);
+			}
+		} else {
+			// sollte kein Object bestehen ist die GID = Spoken Vocals
+			attr_gid = 'd3a36e62-a7c4-4eb9-839f-adfebe87ac12';
+		}
+		// Wenn es eine Attribute GID gibt setze diese in das Object für createAttributeTree
+		if (attr_gid) {
+			attr_obj['type'] = { gid: attr_gid };
+		}
+		// Wenn es einen Rollenname gibt setze die Eigenschaft in das Object für createAttributeTree
+		if (roleName != '') {
+			attr_obj['credited_as'] = roleName;
+		}
+		const vocalAttributes = attr_obj?.type ? createAttributeTree(attr_obj) : undefined;
+		// Objet zum erstellen von Beziehung
+		let relship_obj = { entity0_credit: artistCredit };
+		// Webb es Attribute gibt
+		if (vocalAttributes?.value) {
+			// ... füge diese dem Object für die Beziehungen hinzu
+			relship_obj['attributes'] = vocalAttributes;
+		}
 		if (recordings) {
+			// setze die Standard linktypID für Recoring -> Vocals
+			let linkTypeID = 149;
+			// Wenn es ein Crew Object gibt
+			if (crewImport.linktype) {
+				// ... und der Linkty bekannt ist...
+				if (getLinkTypeId(crewImport.targetType, 'recording', crewImport.linktype)) {
+					// ...speichere die ID in eine Variabel
+					linkTypeID = getLinkTypeId(crewImport.targetType, 'recording', crewImport.linktype);
+				} else {
+					console.log('Fehler', `Unsupported Recording relationship type '${crewImport.linktype}'`);
+					return 'skipped';
+				}
+			}
+			// Erstelle die Beziehung zu den Recordings
 			batchCreateRelationships(recordings, artist, {
-				linkTypeID: 149, // performance -> performer -> vocals
-				entity0_credit: artistCredit,
-				attributes: vocalAttributes,
+				linkTypeID: linkTypeID,
+				...relship_obj,
 			});
 		} else {
+			// Sollte die Beziehung nicht zu Recordings sein wird der Linktyp für Release benutzt
+			// setze die Standard linktypID für Release -> Vocals
+			let linkTypeID = 60;
+			// Wenn es ein Crew Object gibt
+			if (crewImport.linktype) {
+				// ... und der Linkty bekannt ist...
+				if (getLinkTypeId(crewImport.targetType, 'release', crewImport.linktype)) {
+					// ...speichere die ID in eine Variabel
+					linkTypeID = getLinkTypeId(crewImport.targetType, 'release', crewImport.linktype);
+				} else {
+					console.log('Fehler', `Unsupported Release relationship type '${crewImport.linktype}'`);
+					return 'skipped';
+				}
+			}
+			// Erstelle die Beziehung zum Release
 			createRelationship({
 				target: artist,
-				linkTypeID: 60, // performance -> performer -> vocals
-				entity0_credit: artistCredit,
-				attributes: vocalAttributes,
+				linkTypeID: linkTypeID,
+				...relship_obj,
 			});
 		}
 	}
@@ -1575,27 +1813,38 @@ textarea#credit-input {
 		nameToMBIDCache.load();
 
 		addParserButton('Parse voice actor credits', async (creditLine, event) => {
-			const creditTokens = creditLine.split(getPattern(creditSeparatorInput.value) || /$/);
+				let artistName, roleName;
+				let creditTokens = [];
+				// Wenn es sich bei creditsLine um ein Objekt handelt
+				if (typeof creditLine === 'object') {
+					// ...setze artistname und rolename aus dem Objekt
+					artistName = creditLine.name;
+					roleName = creditLine.attributesTypes[0]?.text;
+				} else {
+					creditTokens = creditLine.split(getPattern(creditSeparatorInput.value) || /$/);
 
-			if (creditTokens.length === 2) {
-				let [roleName, artistName] = creditTokens.map((token) => guessUnicodePunctuation(token.trim()));
+					if (creditTokens.length === 2) {
+						[roleName, artistName] = creditTokens.map((token) => guessUnicodePunctuation(token.trim()));
 
-				const swapNames = event.shiftKey;
-				if (swapNames) {
-					[artistName, roleName] = [roleName, artistName];
+						const swapNames = event.shiftKey;
+						if (swapNames) {
+							[artistName, roleName] = [roleName, artistName];
+						}
+					}
 				}
 
-				const bypassCache = event.ctrlKey || event.metaKey;
-				const result = await addVoiceActor(artistName, roleName, bypassCache);
-				nameToMBIDCache.store();
-				return result;
-			} else {
-				return 'skipped';
-			}
-		}, [
-			'SHIFT key to swap the order of artist names and their role names',
-			'CTRL or ⌘ key to bypass the cache and force a search',
-		].join('\n'));
+				if (creditTokens.length === 2 || typeof creditLine === 'object') {
+					const bypassCache = event.ctrlKey || event.metaKey;
+					const result = await addVoiceActor(artistName, roleName, bypassCache, creditLine);
+					nameToMBIDCache.store();
+					return result;
+				} else {
+					return 'skipped';
+				}
+			}, [
+				'SHIFT key to swap the order of artist names and their role names',
+				'CTRL or ⌘ key to bypass the cache and force a search',
+			].join('\n'));
 	}
 
 	function buildVoiceActorCreditImporterUI() {
@@ -1604,39 +1853,39 @@ textarea#credit-input {
 		dom('credit-parser').insertAdjacentHTML('beforeend', UI);
 
 		addButton('Import voice actors', async (_creditInput, event) => {
-			const releaseData = await fetchEntity$1(window.location.href, ['release-groups', 'url-rels']);
-			const releaseURL = buildEntityURL$1('release', releaseData.id);
-			let discogsURL = releaseData.relations.find((rel) => rel.type === 'discogs')?.url.resource;
+				const releaseData = await fetchEntity$1(window.location.href, ['release-groups', 'url-rels']);
+				const releaseURL = buildEntityURL$1('release', releaseData.id);
+				let discogsURL = releaseData.relations.find((rel) => rel.type === 'discogs')?.url.resource;
 
-			if (!discogsURL || event.shiftKey) {
-				discogsURL = prompt('Discogs release URL');
-			}
+				if (!discogsURL || event.shiftKey) {
+					discogsURL = prompt('Discogs release URL');
+				}
 
-			if (discogsURL) {
-				const result = await importVoiceActorsFromDiscogs(discogsURL);
-				addMessageToEditNote(`Imported voice actor credits from ${discogsURL}`);
+				if (discogsURL) {
+					const result = await importVoiceActorsFromDiscogs(discogsURL);
+					addMessageToEditNote(`Imported voice actor credits from ${discogsURL}`);
 
-				// mapping suggestions
-				const newMatches = result.unmappedArtists.filter((mapping) => mapping.MBID);
-				const artistSeedNote = `Matching artist identified while importing credits from ${discogsURL} to ${releaseURL}`;
-				const messages = newMatches.map((match) => [
-					'Please add the external link',
-					`<a href="${match.externalURL}" target="_blank">${match.externalName}</a>`,
-					'to the matched entity:',
-					`<a href="${seedURLForEntity('artist', match.MBID, match.externalURL, 180, artistSeedNote)}" target="_blank">${match.name}</a>`,
-					match.comment ? `<span class="comment">(<bdi>${match.comment}</bdi>)</span>` : '',
-				].join(' '));
+					// mapping suggestions
+					const newMatches = result.unmappedArtists.filter((mapping) => mapping.MBID);
+					const artistSeedNote = `Matching artist identified while importing credits from ${discogsURL} to ${releaseURL}`;
+					const messages = newMatches.map((match) => [
+							'Please add the external link',
+							`<a href="${match.externalURL}" target="_blank">${match.externalName}</a>`,
+							'to the matched entity:',
+							`<a href="${seedURLForEntity('artist', match.MBID, match.externalURL, 180, artistSeedNote)}" target="_blank">${match.name}</a>`,
+							match.comment ? `<span class="comment">(<bdi>${match.comment}</bdi>)</span>` : '',
+						].join(' '));
 
-				// import statistics
-				const importedCredits = result.mappedCredits + newMatches.length;
-				messages.unshift(`Successfully imported ${importedCredits} of ${result.totalCredits} credits, ${result.mappedCredits} of them were mapped automatically.`);
+					// import statistics
+					const importedCredits = result.mappedCredits + newMatches.length;
+					messages.unshift(`Successfully imported ${importedCredits} of ${result.totalCredits} credits, ${result.mappedCredits} of them were mapped automatically.`);
 
-				dom('credit-import-status').innerHTML = messages.map((message) => `<p>${message}</p>`).join('\n');
-			}
-		}, [
-			'Import credits from Discogs',
-			'SHIFT key to ignore an existing URL relationship and prompt for an URL',
-		].join('\n'));
+					dom('credit-import-status').innerHTML = messages.map((message) => `<p>${message}</p>`).join('\n');
+				}
+			}, [
+				'Import credits from Discogs',
+				'SHIFT key to ignore an existing URL relationship and prompt for an URL',
+			].join('\n'));
 	}
 
 	buildCreditParserUI(buildVoiceActorCreditParserUI, buildVoiceActorCreditImporterUI);

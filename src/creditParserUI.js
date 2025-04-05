@@ -106,8 +106,8 @@ async function initializeUI() {
 		// hidden pattern inputs have a zero width, so they have to be resized if the config has not been open initially
 		if (!config.open) {
 			config.addEventListener('toggle', () => {
-				qsa('input.pattern', config).forEach((input) => automaticWidth.call(input));
-			}, { once: true });
+					qsa('input.pattern', config).forEach((input) => automaticWidth.call(input));
+				}, { once: true });
 		}
 	});
 
@@ -164,8 +164,8 @@ async function initializeUI() {
 
 /**
  * Adds a new button with the given label and click handler to the credit parser UI.
- * @param {string} label 
- * @param {(creditInput: HTMLTextAreaElement, event: MouseEvent) => any} clickHandler 
+ * @param {string} label
+ * @param {(creditInput: HTMLTextAreaElement, event: MouseEvent) => any} clickHandler
  * @param {string} [description] Description of the button, shown as tooltip.
  */
 export function addButton(label, clickHandler, description) {
@@ -185,7 +185,7 @@ export function addButton(label, clickHandler, description) {
 
 /**
  * Adds a new parser button with the given label and handler to the credit parser UI.
- * @param {string} label 
+ * @param {string} label
  * @param {(creditLine: string, event: MouseEvent) => import('@kellnerd/es-utils').MaybePromise<CreditParserLineStatus>} parser
  * Handler which parses the given credit line and returns whether it was successful.
  * @param {string} [description] Description of the button, shown as tooltip.
@@ -194,35 +194,67 @@ export function addParserButton(label, parser, description) {
 	/** @type {HTMLInputElement} */
 	const removeParsedLines = dom('remove-parsed-lines');
 
-	return addButton(label, async (creditInput, event) => {
-		const credits = creditInput.value.split('\n').map((line) => line.trim());
-		const parsedLines = [], skippedLines = [];
+	return addButton(label,	async (creditInput, event) => {
+		const parsedLines = [],	skippedLines = [];
+			// Check ob CreditInput ein JSON String ist
+			if (checkJSON(creditInput.value)) {
+				// Wenn im CreditInput ein JSON string steht
+				// erzeuge daraus ein Object ...
+				const credits = JSON.parse(creditInput.value);
+				// durchlaufe alle Credit Objekte
+				for (const line of credits) {
+					// Übergebe das Credit Object
+					const parserStatus = await parser(line, event);
+					// Wenn Credit 'done' ist...
+					if (parserStatus !== 'skipped') {
+						// ...füge den Job + Künstler + Rollennamen als String ins Parsed Array
+						parsedLines.push(`${line.linktype}: ${line.name}${
+							line.attributesTypes[0]?.text ? ' - ' + line.attributesTypes[0].text : ''
+						}`);
+					}
+					// Wenn Credit übersprungen wurde...
+					if (parserStatus !== 'done') {
+						// ...füge das Objekt ins Skipped Array
+						skippedLines.push(line);
+					}
+				}
+			} else {
+				// ...ansonsten führe Kellnerds Code aus
+				const credits = creditInput.value.split('\n').map((line) => line.trim());
+				const parsedLines = [], skippedLines = [];
 
-		for (const line of credits) {
-			// skip empty lines, but keep them for display of skipped lines
-			if (!line) {
-				skippedLines.push(line);
-				continue;
+				for (const line of credits) {
+					// skip empty lines, but keep them for display of skipped lines
+					if (!line) {
+						skippedLines.push(line);
+						continue;
+					}
+					// treat partially parsed lines as both skipped and parsed
+					const parserStatus = await parser(line, event);
+					if (parserStatus !== 'skipped') {
+						parsedLines.push(line);
+					}
+					if (parserStatus !== 'done') {
+						skippedLines.push(line);
+					}
+				}
+
+				if (parsedLines.length) {
+					addMessageToEditNote(parsedLines.join('\n'));
+				}
+
+				if (removeParsedLines.checked) {
+					// Wenn es Übersprungene Credozs als Objekte gibt
+					if (skippedLines.length && typeof skippedLines[0] === 'object') {
+						// ...setze diese Credits als JSON String in Textarea
+						setTextarea(creditInput, JSON.stringify(skippedLines));
+					} else {
+						// ...ansonsten trenne die Textzeile mit Umbruch
+						setTextarea(creditInput, skippedLines.join('\n'));
+					}
+				}
 			}
-
-			// treat partially parsed lines as both skipped and parsed
-			const parserStatus = await parser(line, event);
-			if (parserStatus !== 'skipped') {
-				parsedLines.push(line);
-			}
-			if (parserStatus !== 'done') {
-				skippedLines.push(line);
-			}
-		}
-
-		if (parsedLines.length) {
-			addMessageToEditNote(parsedLines.join('\n'));
-		}
-
-		if (removeParsedLines.checked) {
-			setTextarea(creditInput, skippedLines.join('\n'));
-		}
-	}, description);
+		}, description);
 }
 
 /**
@@ -280,8 +312,8 @@ function addPatternInput(config) {
 
 /**
  * Sets the input to the given value (optional), resizes it and triggers persister and validation.
- * @param {HTMLInputElement} input 
- * @param {string} [value] 
+ * @param {HTMLInputElement} input
+ * @param {string} [value]
  */
 function setInput(input, value) {
 	if (value) input.value = value;
@@ -291,10 +323,26 @@ function setInput(input, value) {
 
 /**
  * Sets the textarea to the given value and adjusts the height.
- * @param {HTMLTextAreaElement} textarea 
- * @param {string} value 
+ * @param {HTMLTextAreaElement} textarea
+ * @param {string} value
  */
 function setTextarea(textarea, value) {
 	textarea.value = value;
 	automaticHeight.call(textarea);
+}
+
+/**
+ * @description Check ob ein String ein JSON String ist
+ * @author Eichi76
+ * @date 2025-04-05
+ * @param {string} str
+ * @returns {boolean}
+ */
+function checkJSON(str) {
+	try {
+		JSON.parse(str);
+	} catch (e) {
+		return false;
+	}
+	return true;
 }
