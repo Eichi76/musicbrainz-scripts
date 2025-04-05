@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name          MusicBrainz: Voice actor credits
+// @name          (DEV) MusicBrainz: Voice actor credits
 // @version       2025.4.5
 // @namespace     https://github.com/Eichi76/musicbrainz-scripts
-// @author        kellnerd
+// @author        Eichi76
 // @description   Parses voice actor credits from text and automates the process of creating release or recording relationships for these. Also imports credits from Discogs.
-// @homepageURL   https://github.com/Eichi76/musicbrainz-scripts#voice-actor-credits
+// @homepageURL   https://github.com/Eichi76/musicbrainz-scripts#(dev)-musicbrainz%3A-voice-actor-credits
 // @downloadURL   https://raw.github.com/Eichi76/musicbrainz-scripts/voiceActor-JSONImport/dist/voiceActorCredits.user.js
 // @updateURL     https://raw.github.com/Eichi76/musicbrainz-scripts/voiceActor-JSONImport/dist/voiceActorCredits.user.js
 // @supportURL    https://github.com/Eichi76/musicbrainz-scripts/issues

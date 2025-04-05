@@ -1,7 +1,7 @@
 /** @type {import('@kellnerd/userscript-bundler').EnhancedUserscriptMetadata} */
 const metadata = {
-	name: 'MusicBrainz: Voice actor credits',
-	author: 'kellnerd',
+	name: '(DEV) MusicBrainz: Voice actor credits',
+	author: 'Eichi76',
 	description: 'Parses voice actor credits from text and automates the process of creating release or recording relationships for these. Also imports credits from Discogs.',
 	features: [
 		'Simplifies the addition of “spoken vocals” relationships by providing a pre-filled dialogue in the relationship editor.',

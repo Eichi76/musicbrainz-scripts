@@ -52,7 +52,7 @@ Parses copyright notices and automates the process of creating release and recor
 [![Install](https://img.shields.io/badge/Install-success.svg?style=for-the-badge&logo=tampermonkey)](dist/parseCopyrightNotice.user.js?raw=1)
 [![Source](https://img.shields.io/badge/Source-grey.svg?style=for-the-badge&logo=github)](dist/parseCopyrightNotice.user.js)
 
-### Voice actor credits
+### (DEV) MusicBrainz: Voice actor credits
 
 Parses voice actor credits from text and automates the process of creating release or recording relationships for these. Also imports credits from Discogs.
 - Simplifies the addition of “spoken vocals” relationships by providing a pre-filled dialogue in the relationship editor.
